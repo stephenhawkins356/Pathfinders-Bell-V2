@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>POM Pathfinders: Rotation Alerts</title>
+<style>
+  :root { color-scheme: dark; --bg:#101827; --panel:#1b2940; --panel2:#243650; --text:#f4f7fb; --muted:#b9c7d8; --accent:#63c7c0; --warn:#f5b84b; --danger:#f07878; }
+  * { box-sizing:border-box; }
+  body { margin:0; padding:24px; background:linear-gradient(145deg,#101827,#17263b); color:var(--text); font:16px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  .wrap { max-width:1100px; margin:auto; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  h1 { margin:0; font-size:clamp(1.5rem,3vw,2.2rem); }
+  .sub { color:var(--muted); margin-top:4px; }
+  .clock-panel,.panel { background:var(--panel); border:1px solid #344761; border-radius:16px; padding:20px; box-shadow:0 8px 28px #0003; }
+  .top-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+  .clock { font-size:clamp(2.8rem,8vw,5rem); font-weight:750; letter-spacing:2px; line-height:1.1; font-variant-numeric:tabular-nums; }
+  .date { color:var(--muted); margin-top:6px; }
+  .next-label { color:var(--muted); font-size:.9rem; text-transform:uppercase; letter-spacing:1px; }
+  .next-name { font-size:1.5rem; font-weight:700; margin:6px 0; }
+  .next-time { color:var(--accent); font-size:1.15rem; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:10px; margin:16px 0; }
+  button { border:0; border-radius:10px; padding:10px 15px; background:var(--panel2); color:var(--text); font-weight:650; cursor:pointer; }
+  button:hover { filter:brightness(1.15); }
+  button.primary { background:var(--accent); color:#10232b; }
+  button.warn { background:var(--warn); color:#34250a; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  .status { color:var(--muted); align-self:center; font-size:.9rem; }
+  .section-head { display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+  h2 { margin:0; font-size:1.25rem; }
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; min-width:650px; }
+  th,td { padding:11px 8px; border-bottom:1px solid #344761; text-align:left; }
+  th { color:var(--muted); font-size:.82rem; text-transform:uppercase; letter-spacing:.6px; }
+  input[type="text"],input[type="time"],select { width:100%; min-width:95px; background:#101b2b; color:var(--text); border:1px solid #465b75; border-radius:8px; padding:9px; font:inherit; }
+  input[type="checkbox"] { width:19px; height:19px; accent-color:var(--accent); }
+  .enabled-cell { text-align:center; }
+  .small-btn { padding:8px 10px; font-size:.85rem; white-space:nowrap; }
+  .help { color:var(--muted); font-size:.9rem; margin:14px 0 0; }
+  .alert-overlay { position:fixed; inset:0; display:none; align-items:center; justify-content:center; padding:20px; background:#050b15bb; z-index:5; }
+  .alert-box { width:min(600px,100%); padding:36px 24px; text-align:center; background:#20334d; border:3px solid var(--accent); border-radius:22px; box-shadow:0 20px 80px #0008; }
+  .alert-box.warning { border-color:var(--warn); }
+  .alert-box.end { border-color:var(--danger); }
+  .alert-kicker { color:var(--muted); text-transform:uppercase; letter-spacing:2px; font-size:.9rem; }
+  .alert-title { font-size:clamp(2rem,7vw,3.5rem); font-weight:800; margin:12px 0; }
+  .alert-time { color:var(--accent); font-size:1.2rem; }
+  footer { color:var(--muted); font-size:.85rem; margin:16px 2px; }
+  @media(max-width:700px) { body{padding:14px}.top-grid{grid-template-columns:1fr}.clock-panel,.panel{padding:16px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>POM Pathfinders: Rotation Alerts</h1>
+      <div class="sub">A simple daily schedule for rotation warnings and transitions</div>
+    </div>
+  </header>
+
+  <div class="top-grid">
+    <section class="clock-panel">
+      <div class="next-label">Current time</div>
+      <div class="clock" id="clock">--:--:--</div>
+      <div class="date" id="date"></div>
+    </section>
+    <section class="clock-panel">
+      <div class="next-label">Next scheduled alert</div>
+      <div class="next-name" id="nextName">No upcoming alerts</div>
+      <div class="next-time" id="nextTime">Add an enabled alert below</div>
+    </section>
+  </div>
+
+  <div class="toolbar">
+    <button class="primary" id="startBtn">Start Bell</button>
+    <button id="stopBtn">Stop Bell</button>
+    <button id="fullscreenBtn">Full Screen</button>
+    <span class="status" id="status">Press Start Bell once to enable sound in this browser.</span>
+  </div>
+
+  <section class="panel">
+    <div class="section-head">
+      <h2>Daily alert schedule</h2>
+      <button class="warn" id="resetBtn">Reset schedule</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>On</th><th>Time</th><th>Alert name</th><th>Sound / announcement</th><th>Test</th></tr></thead>
+        <tbody id="scheduleRows"></tbody>
+      </table>
+    </div>
+    <p class="help">Your schedule is saved automatically in this browser on this device. Keep this page open and the computer awake for alerts to run.</p>
+  </section>
+  <footer>Tip: Keep this page open in a browser tab. Browser audio may be muted until you press Start Bell.</footer>
+</div>
+
+<div class="alert-overlay" id="alertOverlay" role="alertdialog" aria-live="assertive">
+  <div class="alert-box" id="alertBox">
+    <div class="alert-kicker" id="alertKicker">Scheduled alert</div>
+    <div class="alert-title" id="alertTitle">Rotation</div>
+    <div class="alert-time" id="alertTime"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  "use strict";
+  const STORAGE_KEY = "pomPathfindersRotationAlerts_v2";
+  const DEFAULTS = [
+    { enabled:false, time:"08:00", name:"Rotation 1", type:"chime" },
+    { enabled:false, time:"08:30", name:"Rotation 2", type:"warning" },
+    { enabled:false, time:"09:00", name:"Rotation 3", type:"end" },
+    { enabled:false, time:"09:30", name:"Rotation 4", type:"chime" },
+    { enabled:false, time:"10:00", name:"Rotation 5", type:"warning" },
+    { enabled:false, time:"10:30", name:"Rotation 6", type:"end" },
+    { enabled:false, time:"11:00", name:"Rotation 7", type:"chime" },
+    { enabled:false, time:"11:30", name:"Rotation 8", type:"warning" },
+    { enabled:false, time:"12:00", name:"Rotation 9", type:"end" },
+    { enabled:false, time:"12:30", name:"Rotation 10", type:"chime" },
+    { enabled:false, time:"13:00", name:"Rotation 11", type:"warning" },
+    { enabled:false, time:"13:30", name:"Rotation 12", type:"end" }
+  ];
+  let schedule = loadSchedule();
+  let audioContext = null;
+  let running = false;
+  let lastTriggeredMinute = "";
+  let dismissTimer = null;
+
+  const $ = id => document.getElementById(id);
+  function loadSchedule() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (Array.isArray(saved) && saved.length === 12) {
+        return saved.map((item, i) => ({
+          enabled: !!item.enabled,
+          time: /^\d{2}:\d{2}$/.test(item.time) ? item.time : DEFAULTS[i].time,
+          name: typeof item.name === "string" ? item.name : DEFAULTS[i].name,
+          type: ["chime","warning","end"].includes(item.type) ? item.type : "chime"
+        }));
+      }
+    } catch (e) {}
+    return DEFAULTS.map(x => ({...x}));
+  }
+  function saveSchedule() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(schedule)); }
+    catch (e) { $("status").textContent = "Could not save schedule in this browser."; }
+    updateNextAlert();
+  }
+  function renderRows() {
+    const tbody = $("scheduleRows");
+    tbody.innerHTML = "";
+    schedule.forEach((item, i) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td class="enabled-cell"><input type="checkbox" aria-label="Enable alert ${i+1}" data-field="enabled" data-index="${i}"></td>
+        <td><input type="time" aria-label="Alert ${i+1} time" data-field="time" data-index="${i}"></td>
+        <td><input type="text" maxlength="45" aria-label="Alert ${i+1} name" data-field="name" data-index="${i}"></td>
+        <td><select aria-label="Alert ${i+1} sound" data-field="type" data-index="${i}">
+          <option value="chime">Standard chime</option>
+          <option value="warning">Two-minute warning</option>
+          <option value="end">End of rotation</option>
+        </select></td>
+        <td><button class="small-btn" data-test="${i}">Test</button></td>`;
+      tbody.appendChild(tr);
+      tr.querySelector('[data-field="enabled"]').checked = item.enabled;
+      tr.querySelector('[data-field="time"]').value = item.time;
+      tr.querySelector('[data-field="name"]').value = item.name;
+      tr.querySelector('[data-field="type"]').value = item.type;
+    });
+  }
+  $("scheduleRows").addEventListener("change", e => {
+    const el = e.target;
+    if (!el.dataset.field) return;
+    const i = Number(el.dataset.index), field = el.dataset.field;
+    schedule[i][field] = field === "enabled" ? el.checked : el.value;
+    saveSchedule();
+  });
+  $("scheduleRows").addEventListener("input", e => {
+    const el = e.target;
+    if (el.dataset.field === "name") {
+      schedule[Number(el.dataset.index)].name = el.value;
+      saveSchedule();
+    }
+  });
+  $("scheduleRows").addEventListener("click", async e => {
+    const btn = e.target.closest("[data-test]");
+    if (!btn) return;
+    await enableAudio();
+    playType(schedule[Number(btn.dataset.test)].type, false);
+  });
+
+  async function enableAudio() {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) {
+        if (!audioContext) audioContext = new AudioCtx();
+        if (audioContext.state === "suspended") await audioContext.resume();
+      }
+      running = true;
+      $("status").textContent = "Bell is running. Keep this page open.";
+      $("startBtn").textContent = "Bell Running";
+      $("startBtn").disabled = true;
+    } catch (err) {
+      $("status").textContent = "Audio could not start. Check browser sound permissions.";
+    }
+  }
+  function stopBell() {
+    running = false;
+    $("status").textContent = "Bell stopped.";
+    $("startBtn").textContent = "Start Bell";
+    $("startBtn").disabled = false;
+    if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+  }
+  function tone(freq, start, duration, gain=0.18, wave="sine") {
+    if (!audioContext) return;
+    const osc = audioContext.createOscillator();
+    const vol = audioContext.createGain();
+    osc.type = wave; osc.frequency.setValueAtTime(freq, audioContext.currentTime + start);
+    vol.gain.setValueAtTime(0.0001, audioContext.currentTime + start);
+    vol.gain.exponentialRampToValueAtTime(gain, audioContext.currentTime + start + 0.025);
+    vol.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + start + duration);
+    osc.connect(vol); vol.connect(audioContext.destination);
+    osc.start(audioContext.currentTime + start);
+    osc.stop(audioContext.currentTime + start + duration + 0.03);
+  }
+  function playChime() {
+    tone(784,0,0.45,0.16,"sine"); tone(988,0.18,0.55,0.14,"sine"); tone(1175,0.38,0.75,0.12,"sine");
+  }
+  function playWarning() {
+    tone(660,0,0.28,0.2,"triangle"); tone(660,0.42,0.28,0.2,"triangle"); tone(660,0.84,0.48,0.2,"triangle");
+  }
+  function playEnd() {
+    tone(880,0,0.3,0.2,"square"); tone(660,0.34,0.3,0.2,"square"); tone(440,0.68,0.7,0.2,"square");
+  }
+  function speak(phrase) {
+    if (!("speechSynthesis" in window)) return;
+    window.speechSynthesis.cancel();
+    const utterance = new SpeechSynthesisUtterance(phrase);
+    utterance.lang = "en-US";
+    utterance.rate = 0.95;
+    utterance.pitch = 1;
+    window.speechSynthesis.speak(utterance);
+  }
+  function playType(type, announce=true) {
+    if (type === "warning") {
+      playWarning();
+      if (announce) setTimeout(() => speak("Two-minute warning."), 1250);
+    } else if (type === "end") {
+      playEnd();
+      if (announce) setTimeout(() => speak("Time's up!"), 1250);
+    } else {
+      playChime();
+    }
+  }
+  function showAlert(item, timeText) {
+    const box = $("alertBox");
+    box.className = "alert-box" + (item.type === "warning" ? " warning" : item.type === "end" ? " end" : "");
+    $("alertKicker").textContent = item.type === "warning" ? "Two-minute warning" : item.type === "end" ? "End of rotation" : "Scheduled alert";
+    $("alertTitle").textContent = item.name || "Scheduled alert";
+    $("alertTime").textContent = timeText;
+    $("alertOverlay").style.display = "flex";
+    clearTimeout(dismissTimer);
+    dismissTimer = setTimeout(() => { $("alertOverlay").style.display = "none"; }, 6000);
+    playType(item.type, true);
+  }
+  function updateClock() {
+    const now = new Date();
+    $("clock").textContent = now.toLocaleTimeString([], {hour:"numeric",minute:"2-digit",second:"2-digit"});
+    $("date").textContent = now.toLocaleDateString([], {weekday:"long",month:"long",day:"numeric",year:"numeric"});
+    const minuteKey = now.getFullYear()+"-"+now.getMonth()+"-"+now.getDate()+"-"+now.getHours()+"-"+now.getMinutes();
+    if (running && minuteKey !== lastTriggeredMinute) {
+      const hhmm = String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0");
+      const match = schedule.find(item => item.enabled && item.time === hhmm);
+      if (match) {
+        lastTriggeredMinute = minuteKey;
+        showAlert(match, now.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"}));
+      }
+    }
+    updateNextAlert(now);
+  }
+  function updateNextAlert(now = new Date()) {
+    const current = now.getHours()*60 + now.getMinutes();
+    const upcoming = schedule
+      .map((item, index) => ({...item,index,minutes:Number(item.time.slice(0,2))*60+Number(item.time.slice(3,5))}))
+      .filter(item => item.enabled && item.minutes >= current)
+      .sort((a,b) => a.minutes-b.minutes)[0];
+    if (upcoming) {
+      $("nextName").textContent = upcoming.name || "Scheduled alert";
+      const h = Math.floor(upcoming.minutes/60), m = upcoming.minutes%60;
+      const t = new Date(); t.setHours(h,m,0,0);
+      $("nextTime").textContent = t.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"});
+    } else {
+      $("nextName").textContent = "No more alerts today";
+      $("nextTime").textContent = "Check tomorrow's schedule";
+    }
+  }
+
+  $("startBtn").addEventListener("click", enableAudio);
+  $("stopBtn").addEventListener("click", stopBell);
+  $("fullscreenBtn").addEventListener("click", async () => {
+    try {
+      if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch (e) { $("status").textContent = "Full screen is not available in this browser."; }
+  });
+  $("resetBtn").addEventListener("click", () => {
+    if (!confirm("Reset all 12 alerts to the default schedule?")) return;
+    schedule = DEFAULTS.map(x => ({...x}));
+    renderRows(); saveSchedule();
+  });
+
+  renderRows();
+  updateClock();
+  setInterval(updateClock, 250);
+})();
+</script>
+</body>
+</html>
